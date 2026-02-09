@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roulette 10 cases</title>
+    <style>
+      :root{--size:360px}
+      body{font-family:system-ui,Segoe UI,Roboto,Arial;padding:18px;display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#fff7f0,#f0fbff)}
+      .wrap{width:100%;max-width:720px}
+      .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+      .title{font-size:20px;font-weight:600}
+      .muted{color:#666;font-size:13px}
+
+      .board{display:flex;gap:18px;align-items:center;flex-direction:column}
+
+      .wheel-wrap{position:relative;width:var(--size);height:var(--size)}
+      .wheel{width:100%;height:100%;border-radius:50%;box-shadow:0 10px 30px rgba(0,0,0,.18);transition:transform 5s cubic-bezier(.22,.98,.32,1);display:flex;align-items:center;justify-content:center;overflow:hidden}
+
+      .center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+      .pointer{display:none}
+
+      .bulbs{position:absolute;left:50%;top:50%;width:100%;height:100%;transform:translate(-50%,-50%);pointer-events:none}
+      .bulb{position:absolute;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#ffd66b 30%,#ffc107 60%);box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:0.95;filter:drop-shadow(0 2px 6px rgba(255,160,0,.25));animation:blink 1.6s linear infinite}
+      @keyframes blink{0%,100%{opacity:0.95;transform:scale(1)}50%{opacity:0.35;transform:scale(.8)}}
+
+      .stand{display:none}
+
+      .labels{position:absolute;left:50%;top:50%;width:100%;height:100%;transform:translate(-50%,-50%);pointer-events:none}
+      .label{position:absolute;left:50%;top:50%;transform-origin:0 0;color:#333;font-weight:600}
+      .label small{display:block;font-size:12px;color:#111}
+
+      .controls{width:100%;text-align:center;margin-top:16px}
+      #spin{background:#ff4d4f;color:#fff;border:0;padding:14px 18px;border-radius:10px;font-size:16px;cursor:pointer}
+      #spin:disabled{opacity:.5;cursor:default}
+
+      #status{margin-top:12px;color:#333}
+      #result{margin-top:8px;font-size:18px;font-weight:700}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class="title">🎡 Roulette — 10 cases</div>
+      </div>
+
+      <div class="board">
+        <div class="wheel-wrap">
+          <div class="pointer" aria-hidden="true"></div>
+          <div id="wheel" class="wheel" style="transform:rotate(0deg)"></div>
+          <div id="bulbs" class="bulbs"></div>
+          <div id="labels" class="labels"></div>
+          <div class="center">SPIN</div>
+        </div>
+        <div class="stand" aria-hidden="true"></div>
+
+        <div class="controls">
+          <button id="spin">Lancer</button>
+          <div id="status" class="muted">Prêt.</div>
+          <div id="result"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      const tg = window.Telegram?.WebApp;
+      if(tg){tg.ready();tg.expand?.();}
+
+      const slices = 10;
+      const anglePer = 360 / slices;
+      const wheel = document.getElementById('wheel');
+      const labelsContainer = document.getElementById('labels');
+      const bulbsContainer = document.getElementById('bulbs');
+      const spinBtn = document.getElementById('spin');
+      const status = document.getElementById('status');
+      const resultEl = document.getElementById('result');
+
+      // Génère tableau avec 8 cases vides et 2 "GIFT" placés aléatoirement
+      const items = Array(slices).fill('');
+      let gifts = [];
+      while(gifts.length < 2){
+        const r = Math.floor(Math.random()*slices);
+        if(!gifts.includes(r)){ gifts.push(r); items[r] = 'GIFT'; }
+      }
+
+      // Palette de couleurs vives pour les 10 segments
+      const colors = ['#ff595e','#ffca3a','#8ac926','#1982c4','#6a4c93','#ff7b00','#ff006e','#00c2c7','#ffd166','#8d99ae'];
+      // Applique un conic-gradient calculé selon les couleurs
+      const gradStops = colors.map((c,i)=>`${c} ${i*anglePer}deg ${ (i+1)*anglePer }deg`).join(',');
+      wheel.style.background = `conic-gradient(${gradStops})`;
+
+      // Crée des ampoules autour de la roue
+      const bulbCount = 20;
+      for(let b=0;b<bulbCount;b++){
+        const bulb = document.createElement('div');
+        bulb.className = 'bulb';
+        const bulbAngle = b*(360/bulbCount);
+        bulb.style.transform = `rotate(${bulbAngle}deg) translate(0, calc(var(--size)/2 + 12px)) rotate(${-bulbAngle}deg)`;
+        bulbsContainer.appendChild(bulb);
+      }
+
+      // Crée les labels positionnés autour de la roue
+      for(let i=0;i<slices;i++){
+        const lbl = document.createElement('div');
+        const centerAngle = i*anglePer + anglePer/2; // centre de la tranche
+        const angle = 90 + centerAngle; // décale pour pointer en bas (flèche en bas)
+        lbl.className = 'label';
+        lbl.style.transform = `rotate(${angle}deg) translate(0, calc(var(--size)/2 + 6px)) rotate(${-angle}deg)`;
+        lbl.style.left = '50%';
+        lbl.style.top = '50%';
+        lbl.innerHTML = '';
+        labelsContainer.appendChild(lbl);
+      }
+
+      let spinning = false;
+      function spinTo(index){
+        if(spinning) return;
+        spinning = true;
+        spinBtn.disabled = true;
+        status.textContent = '🎡 Ça tourne...';
+        resultEl.textContent = '';
+
+        const spins = 6 + Math.floor(Math.random()*3); // tours complets
+        const centerAngle = index*anglePer + anglePer/2;
+        const targetRotation = spins*360 + (90 - centerAngle);
+
+        wheel.style.transition = 'transform 5s cubic-bezier(.22,.98,.32,1)';
+        wheel.style.transform = `rotate(${targetRotation}deg)`;
+
+        wheel.addEventListener('transitionend', function handler(){
+          wheel.removeEventListener('transitionend', handler);
+          spinning = false;
+          spinBtn.disabled = false;
+          const val = items[index];
+          if(val === 'GIFT'){
+            status.textContent = '🎉 Félicitations — GIFT !';
+            resultEl.textContent = 'GIFT';
+          } else {
+            status.textContent = '😅 Rien.';
+            resultEl.textContent = '';
+          }
+
+          // Envoie du résultat au bot Telegram si disponible
+          try{
+            const payload = JSON.stringify({ result: val || 'Rien', index });
+            tg?.sendData?.(payload);
+          }catch(e){/* ignore */}
+        });
+      }
+
+      spinBtn.addEventListener('click', ()=>{
+        // Choisir aléatoirement une case (possibilité d'ajuster probabilités)
+        const pick = Math.floor(Math.random()*slices);
+        spinTo(pick);
+      });
+    </script>
+  </body>
+</html>
